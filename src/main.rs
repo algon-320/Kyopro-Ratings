@@ -2,19 +2,19 @@ extern crate hyper;
 extern crate reqwest;
 extern crate scraper;
 extern crate serde_json;
+extern crate chrono;
 
 use hyper::rt::Future;
 use hyper::service::service_fn_ok;
 use hyper::{Body, Method, Response, Server, StatusCode};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
+use std::env;
 
 mod contest_service;
 use contest_service::ContestService;
 
 fn main() {
-    let addr = ([127, 0, 0, 1], 3000).into();
-
     let new_svc = || {
         service_fn_ok(|_req| match (_req.method(), _req.uri().path()) {
             (&Method::GET, "/json") => {
@@ -30,7 +30,7 @@ fn main() {
                         url_query_params.insert(tmp[0], tmp[1]);
                     }
 
-                    println!("url_query_params: {:?}", url_query_params);
+                    println!("{} # url_query_params: {:?}", chrono::Utc::now(), url_query_params);
 
                     for (service_name, handle) in url_query_params.into_iter() {
                         match ContestService::from_name(service_name) {
@@ -72,16 +72,26 @@ fn main() {
                     .body(Body::from(format!("{}", Value::Object(response_json))))
                     .unwrap()
             }
-            (_, _) => Response::builder()
+            (method, path) => {
+                println!("{} # 404: method:{:?} path:{:?}", chrono::Utc::now(), method, path);
+                Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("Not found"))
-                .unwrap(),
+                .unwrap()
+            }
         })
     };
+
+    let port = match env::var("PORT") {
+        Ok(value) => value.parse::<u16>().unwrap(),
+        Err(_) => 3000,
+    };
+    let addr = ([0, 0, 0, 0], port).into();
+
     let server = Server::bind(&addr)
         .serve(new_svc)
         .map_err(|e| eprintln!("server error: {}", e));
 
-    println!("now serving !");
+    println!("{} # start serving !", chrono::Utc::now());
     hyper::rt::run(server);
 }
