@@ -1,8 +1,8 @@
+extern crate chrono;
 extern crate hyper;
 extern crate reqwest;
 extern crate scraper;
 extern crate serde_json;
-extern crate chrono;
 
 use hyper::rt::Future;
 use hyper::service::service_fn_ok;
@@ -30,7 +30,11 @@ fn main() {
                         url_query_params.insert(tmp[0], tmp[1]);
                     }
 
-                    println!("{} # url_query_params: {:?}", chrono::Utc::now(), url_query_params);
+                    println!(
+                        "{} # url_query_params: {:?}",
+                        chrono::Utc::now(),
+                        url_query_params
+                    );
 
                     for (service_name, handle) in url_query_params.into_iter() {
                         match ContestService::from_name(service_name) {
@@ -69,15 +73,23 @@ fn main() {
                 Response::builder()
                     .status(StatusCode::OK)
                     .header("Content-Type", "text/json")
+                    .header("Access-Control-Allow-Origin", "*")
                     .body(Body::from(format!("{}", Value::Object(response_json))))
                     .unwrap()
             }
             (method, path) => {
-                println!("{} # 404: method:{:?} path:{:?}", chrono::Utc::now(), method, path);
+                println!(
+                    "{} # 404: method:{:?} path:{:?}",
+                    chrono::Utc::now(),
+                    method,
+                    path
+                );
                 Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from("Not found"))
-                .unwrap()
+                    .status(StatusCode::NOT_FOUND)
+                    .header("Content-Type", "text/plain")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(Body::from("Not found"))
+                    .unwrap()
             }
         })
     };
