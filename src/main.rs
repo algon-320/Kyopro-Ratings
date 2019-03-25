@@ -50,7 +50,11 @@ fn main() {
                                         );
                                         content.insert(
                                             format!("rating"),
-                                            Value::Number(serde_json::Number::from(rating)),
+                                            Value::Number(serde_json::Number::from(rating.value)),
+                                        );
+                                        content.insert(
+                                            format!("color"),
+                                            Value::String(rating.color.to_string()),
                                         );
                                     }
                                     None => {
