@@ -92,7 +92,7 @@ fn main() {
                         .status(StatusCode::OK)
                         .header("Content-Type", "text/json")
                         .header("Access-Control-Allow-Origin", "*")
-                        .body(Body::from(format!("{}", Value::Object(response_json))))
+                        .body(Body::from(serde_json::to_string_pretty(&Value::Object(response_json)).unwrap()))
                         .unwrap()
 
             }
