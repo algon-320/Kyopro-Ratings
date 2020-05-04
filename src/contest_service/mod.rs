@@ -37,42 +37,23 @@ pub struct Rating {
     pub color: Color,
 }
 
-pub enum ContestService {
-    AtCoder,
-    Codeforces,
-    TopCoder(topcoder::TopCoderContestType),
+pub trait ContestService {
+    fn name(&self) -> &str;
+    fn get_rating(&self, handle: &str) -> Option<Rating>;
 }
-impl ContestService {
-    pub fn from_name(service_name: &str) -> Option<ContestService> {
-        match service_name {
-            "atcoder" => Some(ContestService::AtCoder),
-            "codeforces" => Some(ContestService::Codeforces),
-            "topcoder_algorithm" => Some(ContestService::TopCoder(
-                topcoder::TopCoderContestType::Algorithm,
-            )),
-            "topcoder_marathon" => Some(ContestService::TopCoder(
-                topcoder::TopCoderContestType::Marathon,
-            )),
-            _ => None,
+
+pub fn from_name(name: &str) -> Option<Box<dyn ContestService>> {
+    let services = vec![
+        atcoder::AtCoder::get_service(),
+        codeforces::Codeforces::get_service(),
+        topcoder::TopCoder::get_service(topcoder::TopCoderContestType::Algorithm),
+        topcoder::TopCoder::get_service(topcoder::TopCoderContestType::Marathon),
+    ];
+
+    for s in services.into_iter() {
+        if name == s.name() {
+            return Some(s);
         }
     }
-    pub fn name(&self) -> &str {
-        match self {
-            ContestService::AtCoder => "atcoder",
-            ContestService::Codeforces => "codeforces",
-            ContestService::TopCoder(topcoder::TopCoderContestType::Algorithm) => {
-                "topcoder_algorithm"
-            }
-            ContestService::TopCoder(topcoder::TopCoderContestType::Marathon) => {
-                "topcoder_marathon"
-            }
-        }
-    }
-    pub fn get_rating(&self, handle: &str) -> Option<Rating> {
-        match self {
-            ContestService::AtCoder => atcoder::get_atcoder_rating(handle),
-            ContestService::Codeforces => codeforces::get_codeforces_rating(handle),
-            ContestService::TopCoder(kind) => topcoder::get_topcoder_rating(handle, kind),
-        }
-    }
+    None
 }

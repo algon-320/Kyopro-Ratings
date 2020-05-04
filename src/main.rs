@@ -14,20 +14,19 @@ use std::env;
 use std::sync::{Arc, Mutex};
 
 mod contest_service;
-use contest_service::ContestService;
 
 fn main() {
     let last_requested_time = Arc::new(Mutex::new(Utc::now()));
     let new_svc = move || {
         let last_requested_time = last_requested_time.clone();
-        service_fn_ok(move |_req| match (_req.method(), _req.uri().path()) {
+        service_fn_ok(move |req| match (req.method(), req.uri().path()) {
             (&Method::GET, "/json") => {
                 let last_time = { *last_requested_time.lock().unwrap() };
                 let mut response_json: Map<String, Value> = Map::new();
 
                 let duration = Utc::now() - last_time;
                 if duration >= Duration::milliseconds(200) {
-                    if let Some(query) = _req.uri().query() {
+                    if let Some(query) = req.uri().query() {
                         let mut url_query_params: HashMap<&str, &str> = HashMap::new();
                         for pair in query.split('&') {
                             let tmp = pair.split('=').collect::<Vec<_>>();
@@ -44,8 +43,8 @@ fn main() {
                         );
 
                         for (service_name, handle) in url_query_params.into_iter() {
-                            match ContestService::from_name(service_name) {
-                                Some(ref service) => {
+                            match contest_service::from_name(service_name) {
+                                Some(service) => {
                                     let rating_opt = service.get_rating(handle);
 
                                     let mut content = Map::new();
@@ -121,10 +120,10 @@ fn main() {
         })
     };
 
-    let port = match env::var("PORT") {
-        Ok(value) => value.parse::<u16>().unwrap(),
-        Err(_) => 3000,
-    };
+    let port = env::var("PORT")
+        .ok()
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(3000);
     let addr = ([0, 0, 0, 0], port).into();
 
     let server = Server::bind(&addr)
