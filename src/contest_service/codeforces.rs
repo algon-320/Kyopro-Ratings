@@ -7,7 +7,8 @@ pub fn get_codeforces_rating(handle: &str) -> Option<Rating> {
     let json: Value = reqwest::get(&format!(
         "https://codeforces.com/api/user.info?handles={}",
         handle
-    )).ok()?
+    ))
+    .ok()?
     .json()
     .ok()?;
     let value = if json["status"] == "OK" {

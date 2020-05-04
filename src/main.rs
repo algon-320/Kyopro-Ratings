@@ -4,6 +4,7 @@ extern crate reqwest;
 extern crate scraper;
 extern crate serde_json;
 
+use chrono::{Duration, Utc};
 use hyper::rt::Future;
 use hyper::service::service_fn_ok;
 use hyper::{Body, Method, Response, Server, StatusCode};
@@ -11,7 +12,6 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::env;
 use std::sync::{Arc, Mutex};
-use chrono::{Utc, Duration};
 
 mod contest_service;
 use contest_service::ContestService;
@@ -22,9 +22,7 @@ fn main() {
         let last_requested_time = last_requested_time.clone();
         service_fn_ok(move |_req| match (_req.method(), _req.uri().path()) {
             (&Method::GET, "/json") => {
-                let last_time = {
-                    *last_requested_time.lock().unwrap()
-                };
+                let last_time = { *last_requested_time.lock().unwrap() };
                 let mut response_json: Map<String, Value> = Map::new();
 
                 let duration = Utc::now() - last_time;
@@ -59,7 +57,9 @@ fn main() {
                                             );
                                             content.insert(
                                                 format!("rating"),
-                                                Value::Number(serde_json::Number::from(rating.value)),
+                                                Value::Number(serde_json::Number::from(
+                                                    rating.value,
+                                                )),
                                             );
                                             content.insert(
                                                 format!("color"),
@@ -80,21 +80,29 @@ fn main() {
                             }
                         }
                     } else {
-                        response_json.insert(format!("error"), Value::String(format!("empty query")));
+                        response_json
+                            .insert(format!("error"), Value::String(format!("empty query")));
                     }
                 } else {
-                    response_json.insert(format!("error"), Value::String(format!("try again: latest request is {} ms ago", duration.num_milliseconds())));
+                    response_json.insert(
+                        format!("error"),
+                        Value::String(format!(
+                            "try again: latest request is {} ms ago",
+                            duration.num_milliseconds()
+                        )),
+                    );
                 }
 
                 *last_requested_time.lock().unwrap() = Utc::now();
 
                 Response::builder()
-                        .status(StatusCode::OK)
-                        .header("Content-Type", "text/json")
-                        .header("Access-Control-Allow-Origin", "*")
-                        .body(Body::from(serde_json::to_string_pretty(&Value::Object(response_json)).unwrap()))
-                        .unwrap()
-
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "text/json")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(Body::from(
+                        serde_json::to_string_pretty(&Value::Object(response_json)).unwrap(),
+                    ))
+                    .unwrap()
             }
             (method, path) => {
                 println!(
