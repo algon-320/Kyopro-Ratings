@@ -6,14 +6,13 @@ extern crate serde_json;
 #[macro_use]
 extern crate lazy_static;
 
-use chrono::{Duration, Utc};
+use chrono::prelude::*;
 use hyper::rt::Future;
 use hyper::service::service_fn_ok;
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::env;
-use std::sync::{Arc, Mutex};
 
 mod cache;
 mod contest_service;
@@ -30,11 +29,7 @@ fn query(req: &Request<Body>, response_json: &mut Map<String, Value>) {
             url_query_params.insert(tmp[0], tmp[1]);
         }
 
-        println!(
-            "{} # url_query_params: {:?}",
-            chrono::Utc::now(),
-            url_query_params
-        );
+        println!("{} # url_query_params: {:?}", Utc::now(), url_query_params);
 
         for (service_name, handle) in url_query_params.into_iter() {
             match contest_service::from_name(service_name) {
@@ -67,28 +62,12 @@ fn query(req: &Request<Body>, response_json: &mut Map<String, Value>) {
 }
 
 fn main() {
-    let last_requested_time = Arc::new(Mutex::new(Utc::now()));
-    let new_svc = move || {
-        let last_requested_time = last_requested_time.clone();
+    let new_svc = || {
         service_fn_ok(move |req| match (req.method(), req.uri().path()) {
             (&Method::GET, "/json") => {
-                let last_time = *last_requested_time.lock().unwrap();
                 let mut response_json: Map<String, Value> = Map::new();
 
-                let duration = Utc::now() - last_time;
-                if duration >= Duration::milliseconds(200) {
-                    query(&req, &mut response_json);
-                } else {
-                    response_json.insert(
-                        format!("error"),
-                        Value::String(format!(
-                            "try again: latest request is {} ms ago",
-                            duration.num_milliseconds()
-                        )),
-                    );
-                }
-
-                *last_requested_time.lock().unwrap() = Utc::now();
+                query(&req, &mut response_json);
 
                 Response::builder()
                     .status(StatusCode::OK)
@@ -100,12 +79,7 @@ fn main() {
                     .unwrap()
             }
             (method, path) => {
-                println!(
-                    "{} # 404: method:{:?} path:{:?}",
-                    chrono::Utc::now(),
-                    method,
-                    path
-                );
+                println!("{} # 404: method:{:?} path:{:?}", Utc::now(), method, path);
                 Response::builder()
                     .status(StatusCode::NOT_FOUND)
                     .header("Content-Type", "text/plain")
@@ -126,6 +100,6 @@ fn main() {
         .serve(new_svc)
         .map_err(|e| eprintln!("server error: {}", e));
 
-    println!("{} # start serving !", chrono::Utc::now());
+    println!("{} # start serving !", Utc::now());
     hyper::rt::run(server);
 }

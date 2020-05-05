@@ -7,8 +7,8 @@ use crate::cache::FreshCache;
 use crate::util::tomorrow;
 
 lazy_static! {
-    static ref ALGORITHM_CACHE: FreshCache<Rating> = FreshCache::new();
-    static ref MARATHON_CACHE: FreshCache<Rating> = FreshCache::new();
+    static ref ALGORITHM_CACHE: FreshCache<Option<Rating>> = FreshCache::new();
+    static ref MARATHON_CACHE: FreshCache<Option<Rating>> = FreshCache::new();
 }
 
 pub enum TopCoderContestType {
@@ -35,11 +35,11 @@ impl ContestService for TopCoder {
     fn get_rating(&self, handle: &str) -> Option<Rating> {
         match self.contest_type {
             TopCoderContestType::Algorithm => match ALGORITHM_CACHE.get(handle) {
-                Some(r) => Some(r),
+                Some(r) => r,
                 None => fetch_and_store(handle)?.0,
             },
             TopCoderContestType::Marathon => match MARATHON_CACHE.get(handle) {
-                Some(r) => Some(r),
+                Some(r) => r,
                 None => fetch_and_store(handle)?.1,
             },
         }
@@ -52,34 +52,40 @@ fn fetch_and_store(handle: &str) -> Option<(Option<Rating>, Option<Rating>)> {
         chrono::Utc::now(),
         handle
     );
-    let mut algorithm = None;
-    let mut marathon = None;
     let json: Value = reqwest::get(&format!("http://api.topcoder.com/v2/users/{}", handle))
         .ok()?
         .json()
         .ok()?;
+
+    let mut algorithm = None;
+    let mut marathon = None;
     match &json["ratingSummary"] {
         Value::Array(v) => {
             for obj in v {
                 if obj["name"] == "Algorithm" {
-                    let value = obj["rating"].as_i64()?;
-                    let code = &obj["colorStyle"].as_str()?[7..]; // "color: #RRGGBB"
-                    let color = Color::from_str(&code)?;
-                    let r = Rating { value, color };
-                    ALGORITHM_CACHE.store(handle, r.clone(), tomorrow(0));
-                    algorithm = Some(r);
+                    algorithm = || -> Option<Rating> {
+                        let value = obj["rating"].as_i64()?;
+                        let code = &obj["colorStyle"].as_str()?[7..]; // "color: #RRGGBB"
+                        let color = Color::from_str(&code)?;
+                        let r = Rating { value, color };
+                        Some(r)
+                    }();
                 }
                 if obj["name"] == "Marathon Match" {
-                    let value = obj["rating"].as_i64()?;
-                    let code = &obj["colorStyle"].as_str()?[7..]; // "color: #RRGGBB"
-                    let color = Color::from_str(&code)?;
-                    let r = Rating { value, color };
-                    MARATHON_CACHE.store(handle, r.clone(), tomorrow(0));
-                    marathon = Some(r);
+                    marathon = || -> Option<Rating> {
+                        let value = obj["rating"].as_i64()?;
+                        let code = &obj["colorStyle"].as_str()?[7..]; // "color: #RRGGBB"
+                        let color = Color::from_str(&code)?;
+                        let r = Rating { value, color };
+                        Some(r)
+                    }();
                 }
             }
         }
         _ => {}
     }
+
+    ALGORITHM_CACHE.store(handle, algorithm.clone(), tomorrow(0));
+    MARATHON_CACHE.store(handle, marathon.clone(), tomorrow(0));
     Some((algorithm, marathon))
 }

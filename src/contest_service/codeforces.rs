@@ -7,7 +7,7 @@ use crate::cache::FreshCache;
 use crate::util::tomorrow;
 
 lazy_static! {
-    static ref CACHE: FreshCache<Rating> = FreshCache::new();
+    static ref CACHE: FreshCache<Option<Rating>> = FreshCache::new();
 }
 
 pub struct Codeforces;
@@ -24,7 +24,7 @@ impl ContestService for Codeforces {
     }
     fn get_rating(&self, handle: &str) -> Option<Rating> {
         match CACHE.get(handle) {
-            Some(x) => Some(x),
+            Some(r) => r,
             None => fetch_and_store(handle),
         }
     }
@@ -44,22 +44,24 @@ fn fetch_and_store(handle: &str) -> Option<Rating> {
     .json()
     .ok()?;
 
-    let value = if json["status"] == "OK" {
-        json["result"][0]["rating"].as_i64()?
-    } else {
-        return None;
-    };
-    let color = Color::from_str(match value {
-        r if r >= 2400 => "#FF0000",
-        r if r >= 2100 => "#FF8C00",
-        r if r >= 1900 => "#AA00AA",
-        r if r >= 1600 => "#0000FF",
-        r if r >= 1400 => "#03A89E",
-        r if r >= 1200 => "#008000",
-        r if r >= 0000 => "#808080",
-        _ => "#000000",
-    })?;
-    let rating = Rating { value, color };
+    let rating = || -> Option<Rating> {
+        let value = if json["status"] == "OK" {
+            json["result"][0]["rating"].as_i64()?
+        } else {
+            return None;
+        };
+        let color = Color::from_str(match value {
+            r if r >= 2400 => "#FF0000",
+            r if r >= 2100 => "#FF8C00",
+            r if r >= 1900 => "#AA00AA",
+            r if r >= 1600 => "#0000FF",
+            r if r >= 1400 => "#03A89E",
+            r if r >= 1200 => "#008000",
+            r if r >= 0000 => "#808080",
+            _ => "#000000",
+        })?;
+        Some(Rating { value, color })
+    }();
     CACHE.store(handle, rating.clone(), tomorrow(0));
-    Some(rating)
+    rating
 }
