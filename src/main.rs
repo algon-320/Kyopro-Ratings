@@ -3,17 +3,68 @@ extern crate hyper;
 extern crate reqwest;
 extern crate scraper;
 extern crate serde_json;
+#[macro_use]
+extern crate lazy_static;
 
 use chrono::{Duration, Utc};
 use hyper::rt::Future;
 use hyper::service::service_fn_ok;
-use hyper::{Body, Method, Response, Server, StatusCode};
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::env;
 use std::sync::{Arc, Mutex};
 
+mod cache;
 mod contest_service;
+mod util;
+
+fn query(req: &Request<Body>, response_json: &mut Map<String, Value>) {
+    if let Some(query) = req.uri().query() {
+        let mut url_query_params: HashMap<&str, &str> = HashMap::new();
+        for pair in query.split('&') {
+            let tmp = pair.split('=').collect::<Vec<_>>();
+            if tmp.len() != 2 {
+                continue;
+            }
+            url_query_params.insert(tmp[0], tmp[1]);
+        }
+
+        println!(
+            "{} # url_query_params: {:?}",
+            chrono::Utc::now(),
+            url_query_params
+        );
+
+        for (service_name, handle) in url_query_params.into_iter() {
+            match contest_service::from_name(service_name) {
+                Some(service) => {
+                    let rating_opt = service.get_rating(handle);
+
+                    let mut content = Map::new();
+                    match rating_opt {
+                        Some(rating) => {
+                            content.insert(format!("status"), Value::String(format!("success")));
+                            content.insert(
+                                format!("rating"),
+                                Value::Number(serde_json::Number::from(rating.value)),
+                            );
+                            content
+                                .insert(format!("color"), Value::String(rating.color.to_string()));
+                        }
+                        None => {
+                            content.insert(format!("status"), Value::String(format!("error")));
+                        }
+                    }
+                    response_json.insert(service.name().to_string(), Value::Object(content));
+                }
+                _ => {}
+            }
+        }
+    } else {
+        response_json.insert(format!("error"), Value::String(format!("empty query")));
+    }
+}
 
 fn main() {
     let last_requested_time = Arc::new(Mutex::new(Utc::now()));
@@ -21,67 +72,12 @@ fn main() {
         let last_requested_time = last_requested_time.clone();
         service_fn_ok(move |req| match (req.method(), req.uri().path()) {
             (&Method::GET, "/json") => {
-                let last_time = { *last_requested_time.lock().unwrap() };
+                let last_time = *last_requested_time.lock().unwrap();
                 let mut response_json: Map<String, Value> = Map::new();
 
                 let duration = Utc::now() - last_time;
                 if duration >= Duration::milliseconds(200) {
-                    if let Some(query) = req.uri().query() {
-                        let mut url_query_params: HashMap<&str, &str> = HashMap::new();
-                        for pair in query.split('&') {
-                            let tmp = pair.split('=').collect::<Vec<_>>();
-                            if tmp.len() != 2 {
-                                continue;
-                            }
-                            url_query_params.insert(tmp[0], tmp[1]);
-                        }
-
-                        println!(
-                            "{} # url_query_params: {:?}",
-                            chrono::Utc::now(),
-                            url_query_params
-                        );
-
-                        for (service_name, handle) in url_query_params.into_iter() {
-                            match contest_service::from_name(service_name) {
-                                Some(service) => {
-                                    let rating_opt = service.get_rating(handle);
-
-                                    let mut content = Map::new();
-                                    match rating_opt {
-                                        Some(rating) => {
-                                            content.insert(
-                                                format!("status"),
-                                                Value::String(format!("success")),
-                                            );
-                                            content.insert(
-                                                format!("rating"),
-                                                Value::Number(serde_json::Number::from(
-                                                    rating.value,
-                                                )),
-                                            );
-                                            content.insert(
-                                                format!("color"),
-                                                Value::String(rating.color.to_string()),
-                                            );
-                                        }
-                                        None => {
-                                            content.insert(
-                                                format!("status"),
-                                                Value::String(format!("error")),
-                                            );
-                                        }
-                                    }
-                                    response_json
-                                        .insert(service.name().to_string(), Value::Object(content));
-                                }
-                                _ => {}
-                            }
-                        }
-                    } else {
-                        response_json
-                            .insert(format!("error"), Value::String(format!("empty query")));
-                    }
+                    query(&req, &mut response_json);
                 } else {
                     response_json.insert(
                         format!("error"),

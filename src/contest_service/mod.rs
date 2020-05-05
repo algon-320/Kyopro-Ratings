@@ -2,6 +2,7 @@ mod atcoder;
 mod codeforces;
 mod topcoder;
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Color {
     r: u8,
     g: u8,
@@ -32,6 +33,8 @@ impl Color {
         }
     }
 }
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Rating {
     pub value: i64,
     pub color: Color,
