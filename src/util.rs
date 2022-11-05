@@ -1,5 +1,9 @@
 use chrono::prelude::*;
 
+pub fn japan_tomorrow() -> DateTime<Utc> {
+    tomorrow(9)
+}
+
 pub fn tomorrow(offset_hour: i32) -> DateTime<Utc> {
     tomorrow_from(&Utc::now(), offset_hour)
 }

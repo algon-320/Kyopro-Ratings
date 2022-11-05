@@ -1,50 +1,36 @@
-use scraper::{Html, Selector};
-
 use super::Color;
-use super::ContestService;
 use super::Rating;
 use crate::cache::FreshCache;
-use crate::util::tomorrow;
+use crate::util::japan_tomorrow;
 
-const ATCODER_RATING_CSS_SELECTOR : &str = "table.dl-table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(2) > span:nth-child(1)";
-
-lazy_static! {
+lazy_static::lazy_static! {
     static ref CACHE: FreshCache<Option<Rating>> = FreshCache::new();
 }
 
-pub struct AtCoder;
+pub const NAME: &str = "atcoder";
 
-impl AtCoder {
-    pub fn get_service() -> Box<dyn ContestService> {
-        Box::new(Self)
+pub async fn get_rating(handle: &str) -> Option<Rating> {
+    if let Some(r) = CACHE.get(handle) {
+        return r;
     }
-}
 
-impl ContestService for AtCoder {
-    fn name(&self) -> &str {
-        "atcoder"
-    }
-    fn get_rating(&self, handle: &str) -> Option<Rating> {
-        match CACHE.get(handle) {
-            Some(r) => r,
-            None => fetch_and_store(handle),
-        }
-    }
-}
-
-fn fetch_and_store(handle: &str) -> Option<Rating> {
     println!(
         "{} # atcoder: fetch {}'s rating",
         chrono::Utc::now(),
         handle
     );
     let html = reqwest::get(&format!("https://atcoder.jp/users/{}", handle))
+        .await
         .ok()?
         .text()
+        .await
         .ok()?;
+
     let rating = || -> Option<Rating> {
-        let document = Html::parse_document(&html);
-        let selector = Selector::parse(ATCODER_RATING_CSS_SELECTOR).ok()?;
+        const ATCODER_RATING_CSS_SELECTOR : &str = "table.dl-table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(2) > span:nth-child(1)";
+
+        let document = scraper::Html::parse_document(&html);
+        let selector = scraper::Selector::parse(ATCODER_RATING_CSS_SELECTOR).ok()?;
         let span = document.select(&selector).next()?;
         let rating_str = span.text().next()?;
         let value = rating_str.parse::<i64>().ok()?;
@@ -64,6 +50,8 @@ fn fetch_and_store(handle: &str) -> Option<Rating> {
         })?;
         Some(Rating { value, color })
     }();
-    CACHE.store(handle, rating.clone(), tomorrow(9));
+
+    CACHE.store(handle, rating.clone(), japan_tomorrow());
+
     rating
 }

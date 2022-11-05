@@ -1,105 +1,97 @@
-extern crate chrono;
-extern crate hyper;
-extern crate reqwest;
-extern crate scraper;
-extern crate serde_json;
-#[macro_use]
-extern crate lazy_static;
-
-use chrono::prelude::*;
-use hyper::rt::Future;
-use hyper::service::service_fn_ok;
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use serde_json::{Map, Value};
-use std::collections::HashMap;
-use std::env;
-
 mod cache;
 mod contest_service;
 mod util;
 
-fn query(req: &Request<Body>, response_json: &mut Map<String, Value>) {
-    if let Some(query) = req.uri().query() {
-        let mut url_query_params: HashMap<&str, &str> = HashMap::new();
-        for pair in query.split('&') {
-            let tmp = pair.split('=').collect::<Vec<_>>();
-            if tmp.len() != 2 {
-                continue;
-            }
-            url_query_params.insert(tmp[0], tmp[1]);
-        }
+use chrono::prelude::*;
+use std::net::SocketAddr;
 
-        println!("{} # url_query_params: {:?}", Utc::now(), url_query_params);
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use std::convert::Infallible;
 
-        for (service_name, handle) in url_query_params.into_iter() {
-            match contest_service::from_name(service_name) {
-                Some(service) => {
-                    let rating_opt = service.get_rating(handle);
+#[tokio::main]
+async fn main() {
+    let addr = {
+        let port = std::env::var("PORT")
+            .ok()
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(3000);
+        SocketAddr::from(([0, 0, 0, 0], port))
+    };
 
-                    let mut content = Map::new();
-                    match rating_opt {
-                        Some(rating) => {
-                            content.insert(format!("status"), Value::String(format!("success")));
-                            content.insert(
-                                format!("rating"),
-                                Value::Number(serde_json::Number::from(rating.value)),
-                            );
-                            content
-                                .insert(format!("color"), Value::String(rating.color.to_string()));
-                        }
-                        None => {
-                            content.insert(format!("status"), Value::String(format!("error")));
-                        }
-                    }
-                    response_json.insert(service.name().to_string(), Value::Object(content));
-                }
-                _ => {}
-            }
-        }
-    } else {
-        response_json.insert(format!("error"), Value::String(format!("empty query")));
+    let make_svc = hyper::service::make_service_fn(|_conn| async {
+        Ok::<_, Infallible>(hyper::service::service_fn(router))
+    });
+    let server = Server::bind(&addr).serve(make_svc);
+
+    println!("{} # start listening on {}", Utc::now(), &addr);
+    if let Err(err) = server.await {
+        eprintln!("server error: {err}");
     }
 }
 
-fn main() {
-    let new_svc = || {
-        service_fn_ok(move |req| match (req.method(), req.uri().path()) {
-            (&Method::GET, "/json") => {
-                let mut response_json: Map<String, Value> = Map::new();
+use serde_json::{Map, Value};
 
-                query(&req, &mut response_json);
+async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    match (req.method(), req.uri().path()) {
+        (&Method::GET, "/json") if req.uri().query().is_some() => {
+            let query_string = req.uri().query().unwrap();
 
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", "text/json")
-                    .header("Access-Control-Allow-Origin", "*")
-                    .body(Body::from(
-                        serde_json::to_string_pretty(&Value::Object(response_json)).unwrap(),
-                    ))
-                    .unwrap()
+            let mut response_json: Map<String, Value> = Map::new();
+            for key_value in query_string.split('&') {
+                let mut parts = key_value.split('=');
+                if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
+                    process_query(key, value, &mut response_json).await;
+                }
             }
-            (method, path) => {
-                println!("{} # 404: method:{:?} path:{:?}", Utc::now(), method, path);
-                Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .header("Content-Type", "text/plain")
-                    .header("Access-Control-Allow-Origin", "*")
-                    .body(Body::from("Not found"))
-                    .unwrap()
-            }
-        })
-    };
 
-    let port = env::var("PORT")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(3000);
-    let addr = ([0, 0, 0, 0], port).into();
+            let body = serde_json::to_string_pretty(&Value::Object(response_json)).unwrap();
 
-    let server = Server::bind(&addr)
-        .serve(new_svc)
-        .map_err(|e| eprintln!("server error: {}", e));
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "text/json")
+                .header("Access-Control-Allow-Origin", "*")
+                .body(Body::from(body))
+                .unwrap())
+        }
+        (method, path) => {
+            println!(
+                "{} # 404: method:{:?}, path:{:?}, query:{:?}",
+                Utc::now(),
+                method,
+                path,
+                req.uri().query()
+            );
 
-    println!("{} # start serving !", Utc::now());
-    hyper::rt::run(server);
+            Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("Content-Type", "text/plain")
+                .header("Access-Control-Allow-Origin", "*")
+                .body(Body::from("Not found"))
+                .unwrap())
+        }
+    }
+}
+
+async fn process_query(
+    service_name: &str,
+    handle_name: &str,
+    response_json: &mut Map<String, Value>,
+) {
+    let rating_opt = contest_service::get_rating(service_name, handle_name).await;
+
+    let mut content = Map::new();
+    match rating_opt {
+        Some(rating) => {
+            content.insert(format!("status"), Value::String(format!("success")));
+            content.insert(
+                format!("rating"),
+                Value::Number(serde_json::Number::from(rating.value)),
+            );
+            content.insert(format!("color"), Value::String(rating.color.to_string()));
+        }
+        None => {
+            content.insert(format!("status"), Value::String(format!("error")));
+        }
+    }
+    response_json.insert(service_name.to_owned(), Value::Object(content));
 }

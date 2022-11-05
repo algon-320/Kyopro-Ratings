@@ -1,47 +1,32 @@
-use serde_json::Value;
-
 use super::Color;
-use super::ContestService;
 use super::Rating;
 use crate::cache::FreshCache;
-use crate::util::tomorrow;
+use crate::util::japan_tomorrow;
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref CACHE: FreshCache<Option<Rating>> = FreshCache::new();
 }
 
-pub struct Codeforces;
+pub const NAME: &str = "codeforces";
 
-impl Codeforces {
-    pub fn get_service() -> Box<dyn ContestService> {
-        Box::new(Self)
+pub async fn get_rating(handle: &str) -> Option<Rating> {
+    if let Some(r) = CACHE.get(handle) {
+        return r;
     }
-}
 
-impl ContestService for Codeforces {
-    fn name(&self) -> &str {
-        "codeforces"
-    }
-    fn get_rating(&self, handle: &str) -> Option<Rating> {
-        match CACHE.get(handle) {
-            Some(r) => r,
-            None => fetch_and_store(handle),
-        }
-    }
-}
-
-fn fetch_and_store(handle: &str) -> Option<Rating> {
     println!(
         "{} # codeforces: fetch {}'s rating",
         chrono::Utc::now(),
         handle
     );
-    let json: Value = reqwest::get(&format!(
+    let json: serde_json::Value = reqwest::get(&format!(
         "https://codeforces.com/api/user.info?handles={}",
         handle
     ))
+    .await
     .ok()?
     .json()
+    .await
     .ok()?;
 
     let rating = || -> Option<Rating> {
@@ -62,6 +47,8 @@ fn fetch_and_store(handle: &str) -> Option<Rating> {
         })?;
         Some(Rating { value, color })
     }();
-    CACHE.store(handle, rating.clone(), tomorrow(0));
+
+    CACHE.store(handle, rating.clone(), japan_tomorrow());
+
     rating
 }

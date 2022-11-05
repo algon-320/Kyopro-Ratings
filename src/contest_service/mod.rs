@@ -40,23 +40,12 @@ pub struct Rating {
     pub color: Color,
 }
 
-pub trait ContestService {
-    fn name(&self) -> &str;
-    fn get_rating(&self, handle: &str) -> Option<Rating>;
-}
-
-pub fn from_name(name: &str) -> Option<Box<dyn ContestService>> {
-    let services = vec![
-        atcoder::AtCoder::get_service(),
-        codeforces::Codeforces::get_service(),
-        topcoder::TopCoder::get_service(topcoder::TopCoderContestType::Algorithm),
-        topcoder::TopCoder::get_service(topcoder::TopCoderContestType::Marathon),
-    ];
-
-    for s in services.into_iter() {
-        if name == s.name() {
-            return Some(s);
-        }
+pub async fn get_rating(service_name: &str, handle_name: &str) -> Option<Rating> {
+    match service_name {
+        atcoder::NAME => atcoder::get_rating(handle_name).await,
+        codeforces::NAME => codeforces::get_rating(handle_name).await,
+        topcoder::NAME_ALGOLITHM => topcoder::get_rating_algorithm(handle_name).await,
+        topcoder::NAME_MARATHON => topcoder::get_rating_marathon(handle_name).await,
+        _ => None,
     }
-    None
 }

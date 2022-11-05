@@ -2,11 +2,13 @@
 name = "kyopro-ratings"
 version = "0.1.0"
 authors = ["algon-320 <algon.0320@gmail.com>"]
+edition = "2021"
 
 [dependencies]
-reqwest = "0.9.11"
-scraper = "0.11.0"
-hyper = "0.12"
-serde_json = "1.0"
 chrono = "0.4"
 lazy_static = "1.4"
+serde_json = "1.0"
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11.12", features = ["json"] }
+scraper = "0.13.0"

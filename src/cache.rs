@@ -13,6 +13,7 @@ impl<T: Clone> FreshCache<T> {
             hash: RwLock::new(HashMap::new()),
         }
     }
+
     pub fn get(&self, key: &str) -> Option<T> {
         let tbl_reader = self.hash.read().unwrap();
         let entry = tbl_reader.get(key)?.read().unwrap();
@@ -23,6 +24,7 @@ impl<T: Clone> FreshCache<T> {
             None
         }
     }
+
     pub fn store(&self, key: impl Into<String>, value: T, limit: DateTime<Utc>) {
         let mut tbl_writer = self.hash.write().unwrap();
         tbl_writer.insert(key.into(), RwLock::new((value, limit)));
