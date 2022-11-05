@@ -53,6 +53,13 @@ async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
                 .body(Body::from(body))
                 .unwrap())
         }
+
+        (&Method::GET, "/") => Ok(Response::builder()
+            .status(StatusCode::SEE_OTHER)
+            .header("Location", "https://github.com/algon-320/Kyopro-Ratings")
+            .body(Body::empty())
+            .unwrap()),
+
         (method, path) => {
             println!(
                 "{} # 404: method:{:?}, path:{:?}, query:{:?}",
